@@ -51,7 +51,7 @@ func (scl volumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
 func (scl volumeLister) NewPlugin(kind string) dpm.PluginInterface {
 	glog.V(3).Infof("Creating device plugin %s", kind)
 
-	return nil
+	return &volumeDevicePlugin{kind}
 }
 
 func fatal(err error) {
