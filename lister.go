@@ -7,9 +7,9 @@ import (
 	"path"
 	"regexp"
 
+	"github.com/brightbox/brightbox-volume-device-plugin/dpm"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
-	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 )
 
 type volumeLister struct {

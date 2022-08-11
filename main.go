@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
+	"github.com/brightbox/brightbox-volume-device-plugin/dpm"
 )
 
 func main() {
