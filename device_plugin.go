@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 
+	"github.com/fsnotify/fsnotify"
+	"github.com/golang/glog"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
@@ -13,14 +16,21 @@ type volumeDevicePlugin struct {
 // GetDevicePluginOptions returns options to be communicated with Device
 // Manager
 func (dpi *volumeDevicePlugin) GetDevicePluginOptions(context.Context, *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
-	return nil, nil
+	glog.V(3).Info("Volume GetDevicePluginOptions Called")
+
+	return &pluginapi.DevicePluginOptions{}, nil
+}
+
+func isRemoved(event fsnotify.Event) bool {
+	return event.Op == fsnotify.Remove
 }
 
 // ListAndWatch returns a stream of List of Devices
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
 func (dpi *volumeDevicePlugin) ListAndWatch(*pluginapi.Empty, pluginapi.DevicePlugin_ListAndWatchServer) error {
-	return nil
+	glog.V(3).Info("Volume ListAndWatch Called")
+	return waitForChanges(filepath.Join(watchDir, "virtio-"+dpi.volumeID), isRemoved)
 }
 
 // GetPreferredAllocation returns a preferred set of devices to allocate
@@ -36,6 +46,7 @@ func (dpi *volumeDevicePlugin) GetPreferredAllocation(context.Context, *pluginap
 // Plugin can run device specific operations and instruct Kubelet
 // of the steps to make the Device available in the container
 func (dpi *volumeDevicePlugin) Allocate(context.Context, *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
+	glog.V(3).Info("Volume Allocate Called")
 	return nil, nil
 }
 
