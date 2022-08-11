@@ -48,8 +48,8 @@ type devicePlugin struct {
 	Starting         *sync.Mutex
 }
 
-func newDevicePlugin(resourceNamespace string, pluginName string, devicePluginImpl PluginInterface) devicePlugin {
-	return devicePlugin{
+func newDevicePlugin(resourceNamespace string, pluginName string, devicePluginImpl PluginInterface) *devicePlugin {
+	return &devicePlugin{
 		DevicePluginImpl: devicePluginImpl,
 		Socket:           pluginapi.DevicePluginPath + resourceNamespace + "_" + pluginName,
 		ResourceName:     resourceNamespace + "/" + pluginName,
@@ -90,6 +90,7 @@ func (dpi *devicePlugin) StartServer() error {
 	}
 
 	glog.V(3).Infof("%s: Finished starting plugin server", dpi.Name)
+	glog.V(3).Infof("%p", dpi)
 	glog.V(3).Infof("%+v", *dpi)
 	return nil
 }
@@ -165,6 +166,7 @@ func (dpi *devicePlugin) StopServer() error {
 	// TODO: should this also be a critical section?
 	// how do we prevent multiple stops? or start/stop race condition?
 	glog.V(3).Infof("%s: Stopping plugin server", dpi.Name)
+	glog.V(3).Infof("%p", dpi)
 	glog.V(3).Infof("%+v", *dpi)
 
 	if !dpi.Running {

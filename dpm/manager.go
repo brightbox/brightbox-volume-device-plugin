@@ -56,7 +56,7 @@ func (dpm *Manager) Run() {
 
 	// Create list of running plugins and start Discover method of given lister. This method is
 	// responsible of notifying manager about changes in available plugins.
-	var pluginMap = make(map[string]devicePlugin)
+	var pluginMap = make(map[string]*devicePlugin)
 	glog.V(3).Info("Starting Discovery on new plugins")
 	pluginsCh := make(chan PluginNameList)
 	defer close(pluginsCh)
@@ -93,7 +93,7 @@ HandleSignals:
 	}
 }
 
-func (dpm *Manager) handleNewPlugins(currentPluginsMap map[string]devicePlugin, newPluginsList PluginNameList) {
+func (dpm *Manager) handleNewPlugins(currentPluginsMap map[string]*devicePlugin, newPluginsList PluginNameList) {
 	var wg sync.WaitGroup
 	var pluginMapMutex = &sync.Mutex{}
 
@@ -122,7 +122,7 @@ func (dpm *Manager) handleNewPlugins(currentPluginsMap map[string]devicePlugin, 
 	// Remove old plugins
 	for pluginLastName, currentPlugin := range currentPluginsMap {
 		wg.Add(1)
-		go func(name string, plugin devicePlugin) {
+		go func(name string, plugin *devicePlugin) {
 			if _, found := newPluginsSet[name]; !found {
 				glog.V(3).Infof("Remove unused plugin \"%s\"", name)
 				stopPlugin(name, plugin)
@@ -136,12 +136,12 @@ func (dpm *Manager) handleNewPlugins(currentPluginsMap map[string]devicePlugin, 
 	wg.Wait()
 }
 
-func (dpm *Manager) startPluginServers(pluginMap map[string]devicePlugin) {
+func (dpm *Manager) startPluginServers(pluginMap map[string]*devicePlugin) {
 	var wg sync.WaitGroup
 
 	for pluginLastName, currentPlugin := range pluginMap {
 		wg.Add(1)
-		go func(name string, plugin devicePlugin) {
+		go func(name string, plugin *devicePlugin) {
 			startPluginServer(name, plugin)
 			wg.Done()
 		}(pluginLastName, currentPlugin)
@@ -149,12 +149,12 @@ func (dpm *Manager) startPluginServers(pluginMap map[string]devicePlugin) {
 	wg.Wait()
 }
 
-func (dpm *Manager) stopPluginServers(pluginMap map[string]devicePlugin) {
+func (dpm *Manager) stopPluginServers(pluginMap map[string]*devicePlugin) {
 	var wg sync.WaitGroup
 
 	for pluginLastName, currentPlugin := range pluginMap {
 		wg.Add(1)
-		go func(name string, plugin devicePlugin) {
+		go func(name string, plugin *devicePlugin) {
 			stopPluginServer(name, plugin)
 			wg.Done()
 		}(pluginLastName, currentPlugin)
@@ -162,13 +162,13 @@ func (dpm *Manager) stopPluginServers(pluginMap map[string]devicePlugin) {
 	wg.Wait()
 }
 
-func (dpm *Manager) stopPlugins(pluginMap map[string]devicePlugin) {
+func (dpm *Manager) stopPlugins(pluginMap map[string]*devicePlugin) {
 	var wg sync.WaitGroup
 	var pluginMapMutex = &sync.Mutex{}
 
 	for pluginLastName, currentPlugin := range pluginMap {
 		wg.Add(1)
-		go func(name string, plugin devicePlugin) {
+		go func(name string, plugin *devicePlugin) {
 			stopPlugin(name, plugin)
 			pluginMapMutex.Lock()
 			delete(pluginMap, name)
@@ -179,7 +179,7 @@ func (dpm *Manager) stopPlugins(pluginMap map[string]devicePlugin) {
 	wg.Wait()
 }
 
-func startPlugin(pluginLastName string, plugin devicePlugin) {
+func startPlugin(pluginLastName string, plugin *devicePlugin) {
 	var err error
 	if devicePluginImpl, ok := plugin.DevicePluginImpl.(PluginInterfaceStart); ok {
 		err = devicePluginImpl.Start()
@@ -192,7 +192,7 @@ func startPlugin(pluginLastName string, plugin devicePlugin) {
 	}
 }
 
-func stopPlugin(pluginLastName string, plugin devicePlugin) {
+func stopPlugin(pluginLastName string, plugin *devicePlugin) {
 	stopPluginServer(pluginLastName, plugin)
 	if devicePluginImpl, ok := plugin.DevicePluginImpl.(PluginInterfaceStop); ok {
 		err := devicePluginImpl.Stop()
@@ -202,7 +202,7 @@ func stopPlugin(pluginLastName string, plugin devicePlugin) {
 	}
 }
 
-func startPluginServer(pluginLastName string, plugin devicePlugin) {
+func startPluginServer(pluginLastName string, plugin *devicePlugin) {
 	for i := 1; i <= startPluginServerRetries; i++ {
 		err := plugin.StartServer()
 		if err == nil {
@@ -218,7 +218,7 @@ func startPluginServer(pluginLastName string, plugin devicePlugin) {
 	}
 }
 
-func stopPluginServer(pluginLastName string, plugin devicePlugin) {
+func stopPluginServer(pluginLastName string, plugin *devicePlugin) {
 	err := plugin.StopServer()
 	if err != nil {
 		glog.Errorf("Failed to stop plugin's \"%s\" server: %s", pluginLastName, err)
