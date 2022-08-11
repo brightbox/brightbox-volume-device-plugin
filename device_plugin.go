@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"path/filepath"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
@@ -28,9 +27,22 @@ func isRemoved(event fsnotify.Event) bool {
 // ListAndWatch returns a stream of List of Devices
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
-func (dpi *volumeDevicePlugin) ListAndWatch(*pluginapi.Empty, pluginapi.DevicePlugin_ListAndWatchServer) error {
+func (dpi *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginapi.DevicePlugin_ListAndWatchServer) error {
 	glog.V(3).Info("Volume ListAndWatch Called")
-	return waitForChanges(filepath.Join(watchDir, "virtio-"+dpi.volumeID), isRemoved)
+	glog.V(3).Infof("Volume %s: Notifying kublet", dpi.volumeID)
+	if err := srv.Send(&pluginapi.ListAndWatchResponse{
+		Devices: []*pluginapi.Device{
+			&pluginapi.Device{
+				ID:     dpi.volumeID,
+				Health: pluginapi.Healthy,
+			},
+		},
+	}); err != nil {
+		return err
+	}
+	glog.V(3).Infof("Volume %s: Blocking Watch", dpi.volumeID)
+	<-make(chan bool)
+	return nil
 }
 
 // GetPreferredAllocation returns a preferred set of devices to allocate
