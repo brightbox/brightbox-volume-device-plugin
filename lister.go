@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 
 	"github.com/fsnotify/fsnotify"
@@ -31,19 +30,17 @@ func (scl volumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
 		if errors.Is(err, os.ErrNotExist) {
 			glog.Warningf("Watch directory %s is missing", watchDir)
 			pluginListCh <- nil
-			if waitForChanges(path.Dir(watchDir), isWatchDir) {
-				glog.V(3).Infoln("Directory watch complete - rediscovering")
-			} else {
-				glog.Warning("Directory watch failure - rediscovering")
+			if err := waitForChanges(path.Dir(watchDir), isWatchDir); err != nil {
+				glog.Warningf("Directory watch failure: %+v\n", err)
 			}
+			glog.V(3).Infoln("Directory watch complete - rediscovering")
 		} else {
 			glog.V(3).Infof("Enumerating volumes at %s", watchDir)
 			pluginListCh <- enumerateVolumes(files)
-			if waitForChanges(watchDir, isVolume) {
-				glog.V(3).Infoln("Volume watch complete - rediscovering")
-			} else {
-				glog.Warning("Volume watch failure - rediscovering")
+			if err := waitForChanges(watchDir, isVolume); err != nil {
+				glog.Warningf("Volume watch failure %+v\n", err)
 			}
+			glog.V(3).Infoln("Volume watch complete - rediscovering")
 		}
 	}
 }
@@ -52,14 +49,6 @@ func (scl volumeLister) NewPlugin(kind string) dpm.PluginInterface {
 	glog.V(3).Infof("Creating device plugin %s", kind)
 
 	return &volumeDevicePlugin{kind}
-}
-
-func fatal(err error) {
-	if err == nil {
-		return
-	}
-	glog.Errorf("%s: %s\n", filepath.Base(os.Args[0]), err)
-	os.Exit(1)
 }
 
 func isWatchDir(event fsnotify.Event) bool {
@@ -72,46 +61,32 @@ func isVolume(event fsnotify.Event) bool {
 		event.Op == fsnotify.Remove) && path.Dir(event.Name) == watchDir
 }
 
-func waitForChanges(dirName string, matchEvent func(fsnotify.Event) bool) bool {
+func waitForChanges(dirName string, matchEvent func(fsnotify.Event) bool) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		fatal(err)
+		return fmt.Errorf("Failed to create watcher for %s: %w", dirName, err)
 	}
 	defer watcher.Close()
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					glog.V(3).Infoln("Watch event issue: exiting")
-					done <- false
-					return
-				}
-				if matchEvent(event) {
-					glog.V(3).Infof("Watch event: %q %s\n", event.Name, event.Op)
-					done <- true
-					return
-				}
-				glog.V(3).Infoln("Ignored watch event:", event)
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					glog.V(3).Infoln("Watch error issue: exiting")
-					done <- false
-					return
-				}
-				glog.V(3).Infoln("Watch error:", err)
-				done <- false
-				return
-			}
-		}
-	}()
 	glog.V(3).Infof("Adding watch for %q\n", dirName)
 	err = watcher.Add(dirName)
 	if err != nil {
-		fatal(fmt.Errorf("%q: %w", dirName, err))
+		return fmt.Errorf("Failed to add %s to watcher: %w", dirName, err)
 	}
-	return <-done
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return fmt.Errorf("Watch event issue")
+			}
+			if matchEvent(event) {
+				glog.V(3).Infof("Watch event: %q %s\n", event.Name, event.Op)
+				return nil
+			}
+			glog.V(3).Infoln("Ignored watch event:", event)
+		case err := <-watcher.Errors:
+			return err
+		}
+	}
 }
 
 func enumerateVolumes(dirents []os.DirEntry) []string {
