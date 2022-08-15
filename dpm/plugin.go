@@ -90,8 +90,8 @@ func (dpi *devicePlugin) StartServer() error {
 	}
 
 	glog.V(3).Infof("%s: Finished starting plugin server", dpi.Name)
-	glog.V(3).Infof("%p", dpi)
-	glog.V(3).Infof("%+v", *dpi)
+	glog.V(4).Infof("%p", dpi)
+	glog.V(4).Infof("%+v", *dpi)
 	return nil
 }
 
@@ -166,8 +166,8 @@ func (dpi *devicePlugin) StopServer() error {
 	// TODO: should this also be a critical section?
 	// how do we prevent multiple stops? or start/stop race condition?
 	glog.V(3).Infof("%s: Stopping plugin server", dpi.Name)
-	glog.V(3).Infof("%p", dpi)
-	glog.V(3).Infof("%+v", *dpi)
+	glog.V(4).Infof("%p", dpi)
+	glog.V(4).Infof("%+v", *dpi)
 
 	if !dpi.Running {
 		glog.V(3).Infof("%s: Tried to stop stopped DPI", dpi.Name)
