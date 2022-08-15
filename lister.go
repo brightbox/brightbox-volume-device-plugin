@@ -1,103 +1,75 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"os"
-	"path"
-	"regexp"
-
 	"github.com/brightbox/brightbox-volume-device-plugin/dpm"
-	"github.com/fsnotify/fsnotify"
+	"github.com/brightbox/brightbox-volume-device-plugin/volwatch"
 	"github.com/golang/glog"
 )
 
-type volumeLister struct {
+// VolumeLister is a proxy which takes events from the volumewatcher and posts
+// them to the plugin manager using the Lister interface
+type VolumeLister struct {
+	volWatcher    *volwatch.VolumeWatcher
+	volListUpdate chan volwatch.Event
 }
 
-const resourceNamespace = "volumes.brightbox.com"
-const watchDir = "/dev/disk/by-id"
+// NewLister creates a new volumeLister
+func NewLister(vw *volwatch.VolumeWatcher) *VolumeLister {
+	return &VolumeLister{
+		vw,
+		make(chan volwatch.Event),
+	}
+}
 
-var volRe = regexp.MustCompile(`vol-.....$`)
-
-func (scl volumeLister) GetResourceNamespace() string {
+// GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
+// resources in format "color.example.com/<color>" that would be "color.example.com".
+func (vl *VolumeLister) GetResourceNamespace() string {
 	return resourceNamespace
 }
 
-func (scl volumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
-	for {
-		files, err := os.ReadDir(watchDir)
-		if errors.Is(err, os.ErrNotExist) {
-			glog.Warningf("Watch directory %s is missing", watchDir)
-			pluginListCh <- nil
-			if err := waitForChanges(path.Dir(watchDir), isWatchDir); err != nil {
-				glog.Warningf("Directory watch failure: %+v\n", err)
-			}
-			glog.V(3).Infoln("Directory watch complete - rediscovering")
-		} else {
-			glog.V(3).Infof("Enumerating volumes at %s", watchDir)
-			pluginListCh <- enumerateVolumes(files)
-			if err := waitForChanges(watchDir, isVolume); err != nil {
-				glog.Warningf("Volume watch failure %+v\n", err)
-			}
-			glog.V(3).Infoln("Volume watch complete - rediscovering")
-		}
-	}
-}
-
-func (scl volumeLister) NewPlugin(kind string) dpm.PluginInterface {
-	glog.V(3).Infof("Creating device plugin %s", kind)
-
-	return &volumeDevicePlugin{kind}
-}
-
-func isWatchDir(event fsnotify.Event) bool {
-	return event.Op == fsnotify.Create &&
-		event.Name == watchDir
-}
-
-func isVolume(event fsnotify.Event) bool {
-	return (event.Op == fsnotify.Create ||
-		event.Op == fsnotify.Remove) && path.Dir(event.Name) == watchDir
-}
-
-func waitForChanges(dirName string, matchEvent func(fsnotify.Event) bool) error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("Failed to create watcher for %s: %w", dirName, err)
-	}
-	defer watcher.Close()
-	glog.V(3).Infof("Adding watch for %q\n", dirName)
-	err = watcher.Add(dirName)
-	if err != nil {
-		return fmt.Errorf("Failed to add %s to watcher: %w", dirName, err)
-	}
+// Discover notifies manager with a list of currently available resources in its namespace.
+// e.g. if "color.example.com/red" and "color.example.com/blue" are available in the system,
+// it would pass PluginNameList{"red", "blue"} to given channel. In case list of
+// resources is static, it would use the channel only once and then return. In case the list is
+// dynamic, it could block and pass a new list each times resources changed. If blocking is
+// used, it should check whether the channel is closed, i.e. Discover should stop.
+func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
+	glog.V(3).Infof("Waiting for volume events\n")
+	vl.volWatcher.Subscribe(subscriptionName, vl.volListUpdate)
+	defer vl.volWatcher.Unsubscribe(subscriptionName)
 	for {
 		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return fmt.Errorf("Watch event issue")
+		case <-vl.volWatcher.Done():
+			glog.V(3).Infof("Exiting Discover: %s\n", vl.volWatcher.Err())
+			return
+		case event, ok := <-vl.volListUpdate:
+			if ok {
+				glog.V(3).Infof("received Watch Event\n")
+				glog.V(3).Infof("Volumes are %v\n", event.Volumes())
+				pluginListCh <- event.Volumes()
+			} else {
+				glog.V(3).Infoln("Unexpected fault on Watch Event channel")
 			}
-			if matchEvent(event) {
-				glog.V(3).Infof("Watch event: %q %s\n", event.Name, event.Op)
-				return nil
-			}
-			glog.V(3).Infoln("Ignored watch event:", event)
-		case err := <-watcher.Errors:
-			return err
 		}
 	}
 }
 
-func enumerateVolumes(dirents []os.DirEntry) []string {
-	result := make([]string, 0, len(dirents))
-	for _, ent := range dirents {
-		if ent.IsDir() {
-			continue
-		}
-		if m := volRe.FindString(ent.Name()); m != "" {
-			result = append(result, m)
-		}
+// NewPlugin instantiates a plugin implementation. It is given the last name of the resource,
+// e.g. for resource name "color.example.com/red" that would be "red". It must return valid
+// implementation of a PluginInterface.
+func (vl *VolumeLister) NewPlugin(kind string) dpm.PluginInterface {
+	glog.V(3).Infof("Creating device plugin %s", kind)
+
+	return &volumeDevicePlugin{
+		kind,
+		make(chan volwatch.Event),
+		vl.volWatcher,
 	}
-	return result
 }
+
+// Implementation
+
+const (
+	resourceNamespace = "volumes.brightbox.com"
+	subscriptionName  = "lister"
+)

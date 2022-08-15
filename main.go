@@ -4,6 +4,7 @@ import (
 	"flag"
 
 	"github.com/brightbox/brightbox-volume-device-plugin/dpm"
+	"github.com/brightbox/brightbox-volume-device-plugin/volwatch"
 )
 
 func main() {
@@ -14,6 +15,10 @@ func main() {
 	// See also: https://github.com/coredns/coredns/pull/1598
 	flag.Set("logtostderr", "true")
 
-	manager := dpm.NewManager(volumeLister{})
+	// manager := dpm.NewManager(volumeLister{})
+	// manager.Run()
+	watcher := volwatch.NewWatcher()
+	lister := NewLister(watcher)
+	manager := dpm.NewManager(lister)
 	manager.Run()
 }
