@@ -163,6 +163,17 @@ func (dpi *devicePlugin) register() error {
 // StopServer stops the gRPC server. Trying to stop already stopped plugin emits an info-level
 // log message.
 func (dpi *devicePlugin) StopServer() error {
+	return dpi.stopServer(dpi.Server.Stop)
+}
+
+// GracefulStopServer stops the gRPC server. Trying to stop already stopped plugin emits an info-level
+// log message.
+// This option allows the ListandWatch function to terminate first
+func (dpi *devicePlugin) GracefulStopServer() error {
+	return dpi.stopServer(dpi.Server.GracefulStop)
+}
+
+func (dpi *devicePlugin) stopServer(serverStopFunc func()) error {
 	// TODO: should this also be a critical section?
 	// how do we prevent multiple stops? or start/stop race condition?
 	glog.V(3).Infof("%s: Stopping plugin server", dpi.Name)

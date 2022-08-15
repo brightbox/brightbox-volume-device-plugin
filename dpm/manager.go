@@ -193,7 +193,7 @@ func startPlugin(pluginLastName string, plugin *devicePlugin) {
 }
 
 func stopPlugin(pluginLastName string, plugin *devicePlugin) {
-	stopPluginServer(pluginLastName, plugin)
+	gracefulStopPluginServer(pluginLastName, plugin)
 	if devicePluginImpl, ok := plugin.DevicePluginImpl.(PluginInterfaceStop); ok {
 		err := devicePluginImpl.Stop()
 		if err != nil {
@@ -222,5 +222,12 @@ func stopPluginServer(pluginLastName string, plugin *devicePlugin) {
 	err := plugin.StopServer()
 	if err != nil {
 		glog.Errorf("Failed to stop plugin's \"%s\" server: %s", pluginLastName, err)
+	}
+}
+
+func gracefulStopPluginServer(pluginLastName string, plugin *devicePlugin) {
+	err := plugin.GracefulStopServer()
+	if err != nil {
+		glog.Errorf("Failed to gracefully stop plugin's \"%s\" server: %s", pluginLastName, err)
 	}
 }
