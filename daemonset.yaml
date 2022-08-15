@@ -17,7 +17,7 @@ spec:
       containers:
       - name: brightbox-volume-device-plugin
         image: brightbox/brightbox-volume-device-plugin:latest 
-        args: ["-v", "3", "-logtostderr"]
+        args: ["-v", "4", "-logtostderr"]
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

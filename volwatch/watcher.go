@@ -52,6 +52,7 @@ func NewWatcher() *VolumeWatcher {
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	watcher := &VolumeWatcher{
 		eventmap: make(map[string]chan<- Event),
+		events:   make(chan Event),
 		ctx:      watchCtx,
 		cancel:   watchCancel,
 	}
@@ -123,6 +124,7 @@ func (vw *VolumeWatcher) run() {
 			glog.V(4).Infof("Enumerating volumes at %s", watchDir)
 			volumes := enumerateVolumes(files)
 			vw.informSubscribers(volumes)
+			glog.V(4).Infoln("Notifying volume lister")
 			vw.events <- volumes
 			if err := waitForChanges(vw.ctx, watcher, watchDir, isVolume); err != nil {
 				glog.Warningf("Volume watch failure %+v\n", err)
@@ -171,6 +173,7 @@ func waitForChanges(ctx context.Context, watcher *fsnotify.Watcher, dirName stri
 		return fmt.Errorf("Failed to add %s to watcher: %w", dirName, err)
 	}
 	defer watcher.Remove(dirName)
+	glog.V(4).Infoln("Waiting for device changes")
 	for {
 		select {
 		case <-ctx.Done():
