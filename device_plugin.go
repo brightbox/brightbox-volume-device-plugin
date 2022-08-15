@@ -29,13 +29,15 @@ func isRemoved(event fsnotify.Event) bool {
 	return event.Op == fsnotify.Remove
 }
 
+var volMissing = &pluginapi.ListAndWatchResponse{Devices: []*pluginapi.Device{}}
+
 // ListAndWatch returns a stream of List of Devices
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
 func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginapi.DevicePlugin_ListAndWatchServer) error {
 	glog.V(3).Info("Volume ListAndWatch Called")
-	glog.V(3).Infof("Volume %s: Notifying kublet", vdp.volumeID)
-	healthy := &pluginapi.ListAndWatchResponse{
+	glog.V(3).Infof("Volume %s: Notifying kubelet", vdp.volumeID)
+	volPresent := &pluginapi.ListAndWatchResponse{
 		Devices: []*pluginapi.Device{
 			&pluginapi.Device{
 				ID:     vdp.volumeID,
@@ -43,25 +45,17 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 			},
 		},
 	}
-	if err := srv.Send(healthy); err != nil {
+	if err := srv.Send(volPresent); err != nil {
 		return err
-	}
-	glog.V(3).Infof("Volume %s: Waiting for updates", vdp.volumeID)
-	unhealthy := &pluginapi.ListAndWatchResponse{
-		Devices: []*pluginapi.Device{
-			&pluginapi.Device{
-				ID:     vdp.volumeID,
-				Health: pluginapi.Unhealthy,
-			},
-		},
 	}
 	vdp.volWatcher.Subscribe(vdp.volumeID, vdp.volumeUpdate)
 	defer vdp.volWatcher.Unsubscribe(vdp.volumeID)
+	glog.V(3).Infof("Volume %s: Waiting for updates", vdp.volumeID)
 	for {
 		select {
 		case <-vdp.volWatcher.Done():
 			glog.V(3).Infof("Volume %s: Exiting ListAndWatch: %s\n", vdp.volumeID, vdp.volWatcher.Err())
-			err := srv.Send(unhealthy)
+			err := srv.Send(volMissing)
 			if err != nil {
 				return err
 			}
@@ -69,14 +63,15 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 		case event, ok := <-vdp.volumeUpdate:
 			glog.V(3).Infof("Volume %s: Received update", vdp.volumeID)
 			if !(ok && slices.Contains(event.Volumes(), vdp.volumeID)) {
-				glog.V(3).Infof("Volume %s: missing from update, exiting", vdp.volumeID)
-				err := srv.Send(unhealthy)
+				glog.V(3).Infof("Volume %s: missing from list, updating and exiting", vdp.volumeID)
+				err := srv.Send(volMissing)
 				if err != nil {
 					return err
 				}
 				return nil
 			}
 			glog.V(3).Infof("Volume %s: still in list", vdp.volumeID)
+			glog.V(3).Infof("Volume %s: Waiting for updates", vdp.volumeID)
 		}
 	}
 }

@@ -36,6 +36,7 @@ func (e Event) Volumes() []string {
 type VolumeWatcher struct {
 	mapmutex sync.RWMutex
 	eventmap map[string]chan<- Event
+	events   chan Event
 	ctx      context.Context
 	cancel   context.CancelFunc
 }
@@ -70,6 +71,11 @@ func (vw *VolumeWatcher) Unsubscribe(index string) {
 	vw.mapmutex.Lock()
 	defer vw.mapmutex.Unlock()
 	delete(vw.eventmap, index)
+}
+
+// Events returns the main events channel
+func (vw *VolumeWatcher) Events() <-chan Event {
+	return vw.events
 }
 
 // Done returns a channel that is closed when the watcher has been cancelled
@@ -111,7 +117,9 @@ func (vw *VolumeWatcher) run() {
 			}
 		} else {
 			glog.V(4).Infof("Enumerating volumes at %s", watchDir)
-			vw.informSubscribers(enumerateVolumes(files))
+			volumes := enumerateVolumes(files)
+			vw.informSubscribers(volumes)
+			vw.events <- volumes
 			if err := waitForChanges(vw.ctx, watcher, watchDir, isVolume); err != nil {
 				glog.Warningf("Volume watch failure %+v\n", err)
 			}

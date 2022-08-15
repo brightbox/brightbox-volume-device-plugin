@@ -9,16 +9,12 @@ import (
 // VolumeLister is a proxy which takes events from the volumewatcher and posts
 // them to the plugin manager using the Lister interface
 type VolumeLister struct {
-	volWatcher    *volwatch.VolumeWatcher
-	volListUpdate chan volwatch.Event
+	volWatcher *volwatch.VolumeWatcher
 }
 
 // NewLister creates a new volumeLister
 func NewLister(vw *volwatch.VolumeWatcher) *VolumeLister {
-	return &VolumeLister{
-		vw,
-		make(chan volwatch.Event),
-	}
+	return &VolumeLister{vw}
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
@@ -35,16 +31,15 @@ func (vl *VolumeLister) GetResourceNamespace() string {
 // used, it should check whether the channel is closed, i.e. Discover should stop.
 func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
 	glog.V(3).Infof("Waiting for volume events\n")
-	vl.volWatcher.Subscribe(subscriptionName, vl.volListUpdate)
-	defer vl.volWatcher.Unsubscribe(subscriptionName)
 	for {
 		select {
 		case <-vl.volWatcher.Done():
 			glog.V(3).Infof("Exiting Discover: %s\n", vl.volWatcher.Err())
 			return
-		case event, ok := <-vl.volListUpdate:
+		case event, ok := <-vl.volWatcher.Events():
 			if ok {
-				glog.V(3).Infof("received Watch Event\n")
+				glog.V(3).Infoln("Received Watch Event")
+				glog.V(3).Infoln("Notifying manager")
 				glog.V(3).Infof("Volumes are %v\n", event.Volumes())
 				pluginListCh <- event.Volumes()
 			} else {
