@@ -61,16 +61,20 @@ func NewWatcher() *VolumeWatcher {
 
 // Subscribe adds a channel to the subscription list for volume events
 func (vw *VolumeWatcher) Subscribe(index string, channel chan<- Event) {
+	glog.V(4).Infof("Adding channel subscription for %s", index)
 	vw.mapmutex.Lock()
 	defer vw.mapmutex.Unlock()
 	vw.eventmap[index] = channel
+	glog.V(4).Infof("Added")
 }
 
 // Unsubscribe removes a channel from the subscription list for volume events
 func (vw *VolumeWatcher) Unsubscribe(index string) {
+	glog.V(4).Infof("Removing channel subscription for %s", index)
 	vw.mapmutex.Lock()
 	defer vw.mapmutex.Unlock()
 	delete(vw.eventmap, index)
+	glog.V(4).Infof("Removed")
 }
 
 // Events returns the main events channel
@@ -135,9 +139,12 @@ func (vw *VolumeWatcher) run() {
 }
 
 func (vw *VolumeWatcher) informSubscribers(files Event) {
+	glog.V(4).Infoln("Informing Subscribers")
+	glog.V(4).Infoln("Obtaining channels")
 	vw.mapmutex.RLock()
 	channels := maps.Values(vw.eventmap)
 	vw.mapmutex.RUnlock()
+	glog.V(4).Infoln("Sending channel updates")
 	for _, channel := range channels {
 		select {
 		case <-vw.ctx.Done():
