@@ -90,7 +90,7 @@ func (vdp *volumeDevicePlugin) GetPreferredAllocation(context.Context, *pluginap
 // of the steps to make the Device available in the container
 func (vdp *volumeDevicePlugin) Allocate(context.Context, *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	glog.V(3).Info("Volume Allocate Called")
-	return nil, nil
+	return &pluginapi.AllocateResponse{}, nil
 }
 
 // PreStartContainer is called, if indicated by Device Plugin during registeration phase,
