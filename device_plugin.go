@@ -88,9 +88,14 @@ func (vdp *volumeDevicePlugin) GetPreferredAllocation(context.Context, *pluginap
 // Allocate is called during container creation so that the Device
 // Plugin can run device specific operations and instruct Kubelet
 // of the steps to make the Device available in the container
-func (vdp *volumeDevicePlugin) Allocate(context.Context, *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
+func (vdp *volumeDevicePlugin) Allocate(ctx context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	glog.V(3).Info("Volume Allocate Called")
-	return &pluginapi.AllocateResponse{}, nil
+	glog.V(4).Infof("Request is %#v", request)
+	return &pluginapi.AllocateResponse{
+		ContainerResponses: []*pluginapi.ContainerAllocateResponse{
+			&pluginapi.ContainerAllocateResponse{},
+		},
+	}, nil
 }
 
 // PreStartContainer is called, if indicated by Device Plugin during registeration phase,
