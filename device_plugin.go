@@ -46,6 +46,7 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 		},
 	}
 	if err := srv.Send(volPresent); err != nil {
+		glog.V(3).Infof("Volume %s: Failed to send volume present: %s", vdp.volumeID, err)
 		return err
 	}
 	vdp.volWatcher.Subscribe(vdp.volumeID, vdp.volumeUpdate)
@@ -57,6 +58,7 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 			glog.V(3).Infof("Volume %s: Exiting ListAndWatch: %s\n", vdp.volumeID, vdp.volWatcher.Err())
 			err := srv.Send(volMissing)
 			if err != nil {
+				glog.V(3).Infof("Volume %s: Failed to send volume missing: %s", vdp.volumeID, err)
 				return err
 			}
 			return vdp.volWatcher.Err()
@@ -66,6 +68,7 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 				glog.V(3).Infof("Volume %s: missing from list, updating and exiting", vdp.volumeID)
 				err := srv.Send(volMissing)
 				if err != nil {
+					glog.V(3).Infof("Volume %s: Failed to send volume missing: %s", vdp.volumeID, err)
 					return err
 				}
 				return nil
