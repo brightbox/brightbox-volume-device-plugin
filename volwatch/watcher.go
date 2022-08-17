@@ -7,11 +7,9 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
-	"golang.org/x/exp/maps"
 )
 
 const (
@@ -34,11 +32,9 @@ func (e Event) Volumes() []string {
 //
 // Create a VolumeWatcher by calling the NewWatcher function
 type VolumeWatcher struct {
-	mapmutex sync.RWMutex
-	eventmap map[string]chan<- Event
-	events   chan Event
-	ctx      context.Context
-	cancel   context.CancelFunc
+	events chan Event
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // NewWatcher creates a new volume watcher.
@@ -51,31 +47,12 @@ func NewWatcher() *VolumeWatcher {
 
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	watcher := &VolumeWatcher{
-		eventmap: make(map[string]chan<- Event),
-		events:   make(chan Event),
-		ctx:      watchCtx,
-		cancel:   watchCancel,
+		events: make(chan Event),
+		ctx:    watchCtx,
+		cancel: watchCancel,
 	}
 	go watcher.run()
 	return watcher
-}
-
-// Subscribe adds a channel to the subscription list for volume events
-func (vw *VolumeWatcher) Subscribe(index string, channel chan<- Event) {
-	glog.V(4).Infof("Adding channel subscription for %s", index)
-	vw.mapmutex.Lock()
-	defer vw.mapmutex.Unlock()
-	vw.eventmap[index] = channel
-	glog.V(4).Infof("Added")
-}
-
-// Unsubscribe removes a channel from the subscription list for volume events
-func (vw *VolumeWatcher) Unsubscribe(index string) {
-	glog.V(4).Infof("Removing channel subscription for %s", index)
-	vw.mapmutex.Lock()
-	defer vw.mapmutex.Unlock()
-	delete(vw.eventmap, index)
-	glog.V(4).Infof("Removed")
 }
 
 // Events returns the main events channel
@@ -122,10 +99,8 @@ func (vw *VolumeWatcher) run() {
 			}
 		} else {
 			glog.V(4).Infof("Enumerating volumes at %s", watchDir)
-			volumes := enumerateVolumes(files)
-			vw.informSubscribers(volumes)
 			glog.V(4).Infoln("Notifying volume lister")
-			vw.events <- volumes
+			vw.events <- enumerateVolumes(files)
 			if err := waitForChanges(vw.ctx, watcher, watchDir, isVolume); err != nil {
 				glog.Warningf("Volume watch failure %+v\n", err)
 			}
@@ -136,23 +111,6 @@ func (vw *VolumeWatcher) run() {
 			return
 		default:
 			glog.V(4).Infoln("Directory watch complete - rediscovering")
-		}
-	}
-}
-
-func (vw *VolumeWatcher) informSubscribers(files Event) {
-	glog.V(4).Infoln("Informing Subscribers")
-	glog.V(4).Infoln("Obtaining channels")
-	vw.mapmutex.RLock()
-	channels := maps.Values(vw.eventmap)
-	vw.mapmutex.RUnlock()
-	glog.V(4).Infoln("Sending channel updates")
-	for _, channel := range channels {
-		select {
-		case <-vw.ctx.Done():
-			glog.V(4).Infoln("Watcher is done, shouldn't get here")
-		default:
-			channel <- files
 		}
 	}
 }

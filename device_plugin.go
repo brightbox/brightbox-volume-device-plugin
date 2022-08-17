@@ -5,7 +5,6 @@ import (
 
 	"golang.org/x/exp/slices"
 
-	"github.com/brightbox/brightbox-volume-device-plugin/volwatch"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
@@ -13,8 +12,8 @@ import (
 
 type volumeDevicePlugin struct {
 	volumeID     string
-	volumeUpdate chan volwatch.Event
-	volWatcher   *volwatch.VolumeWatcher
+	volumeUpdate chan Completion
+	volLister    *VolumeLister
 }
 
 // GetDevicePluginOptions returns options to be communicated with Device
@@ -49,30 +48,32 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 		glog.V(3).Infof("Volume %s: Failed to send volume present: %s", vdp.volumeID, err)
 		return err
 	}
-	vdp.volWatcher.Subscribe(vdp.volumeID, vdp.volumeUpdate)
-	defer vdp.volWatcher.Unsubscribe(vdp.volumeID)
+	vdp.volLister.Subscribe(vdp.volumeID, vdp.volumeUpdate)
+	defer vdp.volLister.Unsubscribe(vdp.volumeID)
 	glog.V(3).Infof("Volume %s: Waiting for updates", vdp.volumeID)
 	for {
 		select {
-		case <-vdp.volWatcher.Done():
-			glog.V(3).Infof("Volume %s: Exiting ListAndWatch: %s\n", vdp.volumeID, vdp.volWatcher.Err())
+		case <-vdp.volLister.Done():
+			glog.V(3).Infof("Volume %s: Exiting ListAndWatch: %s\n", vdp.volumeID, vdp.volLister.Err())
 			err := srv.Send(volMissing)
 			if err != nil {
 				glog.V(3).Infof("Volume %s: Failed to send volume missing: %s", vdp.volumeID, err)
 				return err
 			}
-			return vdp.volWatcher.Err()
-		case event, ok := <-vdp.volumeUpdate:
+			return vdp.volLister.Err()
+		case completion, ok := <-vdp.volumeUpdate:
 			glog.V(3).Infof("Volume %s: Received update", vdp.volumeID)
-			if !(ok && slices.Contains(event.Volumes(), vdp.volumeID)) {
+			if !(ok && slices.Contains(completion.Volumes, vdp.volumeID)) {
 				glog.V(3).Infof("Volume %s: missing from list, updating and exiting", vdp.volumeID)
 				err := srv.Send(volMissing)
+				completion.CompleteFunc()
 				if err != nil {
 					glog.V(3).Infof("Volume %s: Failed to send volume missing: %s", vdp.volumeID, err)
 					return err
 				}
 				return nil
 			}
+			completion.CompleteFunc()
 			glog.V(3).Infof("Volume %s: still in list", vdp.volumeID)
 			glog.V(3).Infof("Volume %s: Waiting for updates", vdp.volumeID)
 		}
