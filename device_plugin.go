@@ -30,6 +30,18 @@ func isRemoved(event fsnotify.Event) bool {
 
 var volMissing = &pluginapi.ListAndWatchResponse{Devices: []*pluginapi.Device{}}
 
+// Start is executed by Manager after plugin instantiation but before registration with kubelet
+func (vdp *volumeDevicePlugin) Start() error {
+	vdp.volLister.Subscribe(vdp.volumeID, vdp.volumeUpdate)
+	return nil
+}
+
+// Stop is executred by Manager after the plugin is unregistered with kubelet
+func (vdp *volumeDevicePlugin) Stop() error {
+	vdp.volLister.Unsubscribe(vdp.volumeID)
+	return nil
+}
+
 // ListAndWatch returns a stream of List of Devices
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
@@ -48,8 +60,6 @@ func (vdp *volumeDevicePlugin) ListAndWatch(empty *pluginapi.Empty, srv pluginap
 		glog.V(3).Infof("Volume %s: Failed to send volume present: %s", vdp.volumeID, err)
 		return err
 	}
-	vdp.volLister.Subscribe(vdp.volumeID, vdp.volumeUpdate)
-	defer vdp.volLister.Unsubscribe(vdp.volumeID)
 	glog.V(3).Infof("Volume %s: Waiting for updates", vdp.volumeID)
 	for {
 		select {
