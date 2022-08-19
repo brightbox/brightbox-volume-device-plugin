@@ -44,7 +44,7 @@ func (vl *VolumeLister) GetResourceNamespace() string {
 // resources is static, it would use the channel only once and then return. In case the list is
 // dynamic, it could block and pass a new list each times resources changed. If blocking is
 // used, it should check whether the channel is closed, i.e. Discover should stop.
-func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
+func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameListSync) {
 	glog.V(3).Infof("Waiting for volume events\n")
 	for {
 		select {
@@ -57,7 +57,13 @@ func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameList) {
 				glog.V(3).Infof("Volumes are %v\n", event.Volumes())
 				vl.informSubscribers(event.Volumes())
 				glog.V(3).Infoln("Notifying manager")
-				pluginListCh <- event.Volumes()
+				var wg sync.WaitGroup
+				wg.Add(1)
+				pluginListCh <- dpm.PluginNameListSync{
+					Names:  event.Volumes(),
+					Synced: &wg,
+				}
+				wg.Wait()
 			} else {
 				glog.V(3).Infoln("Unexpected fault on Watch Event channel")
 			}

@@ -30,10 +30,9 @@ type Manager struct {
 // implementation. Lister will provide information about handled resources, monitor their
 // availability and provide method to spawn plugins that will handle found resources.
 func NewManager(lister ListerInterface) *Manager {
-	dpm := &Manager{
+	return &Manager{
 		lister: lister,
 	}
-	return dpm
 }
 
 // Run starts the Manager. It sets up the infrastructure and handles system signals, Kubelet socket
@@ -58,7 +57,7 @@ func (dpm *Manager) Run() {
 	// responsible of notifying manager about changes in available plugins.
 	var pluginMap = make(map[string]*devicePlugin)
 	glog.V(3).Info("Starting Discovery on new plugins")
-	pluginsCh := make(chan PluginNameList)
+	pluginsCh := make(chan PluginNameListSync)
 	defer close(pluginsCh)
 	go dpm.lister.Discover(pluginsCh)
 
@@ -68,8 +67,11 @@ HandleSignals:
 	for {
 		select {
 		case newPluginsList := <-pluginsCh:
-			glog.V(3).Infof("Received new list of plugins: %s", newPluginsList)
-			dpm.handleNewPlugins(pluginMap, newPluginsList)
+			glog.V(3).Infof("Received new list of plugins: %s", newPluginsList.Names)
+			dpm.handleNewPlugins(pluginMap, newPluginsList.Names)
+			if newPluginsList.Synced != nil {
+				newPluginsList.Synced.Done()
+			}
 		case event := <-fsWatcher.Events:
 			if event.Name == pluginapi.KubeletSocket {
 				glog.V(3).Infof("Received kubelet socket event: %s", event)
