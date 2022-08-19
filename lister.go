@@ -53,7 +53,7 @@ func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameListSync) {
 			return
 		case event, ok := <-vl.volWatcher.Events():
 			if ok {
-				glog.V(3).Infoln("Received Watch Event")
+				glog.V(3).Infoln("Received watch event")
 				glog.V(3).Infof("Volumes are %v\n", event.Volumes())
 				vl.informSubscribers(event.Volumes())
 				glog.V(3).Infoln("Notifying manager")
@@ -64,6 +64,7 @@ func (vl *VolumeLister) Discover(pluginListCh chan dpm.PluginNameListSync) {
 					Synced: &wg,
 				}
 				wg.Wait()
+				glog.V(3).Infoln("Manager synced, listening for watch events")
 			} else {
 				glog.V(3).Infoln("Unexpected fault on Watch Event channel")
 			}

@@ -47,7 +47,7 @@ func NewWatcher() *VolumeWatcher {
 
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	watcher := &VolumeWatcher{
-		events: make(chan Event),
+		events: make(chan Event, bufferSize),
 		ctx:    watchCtx,
 		cancel: watchCancel,
 	}
@@ -78,6 +78,7 @@ func (vw *VolumeWatcher) Err() error {
 // Implementation
 
 const watchDir = "/dev/disk/by-id"
+const bufferSize = 3
 
 var volRe = regexp.MustCompile(`vol-.....$`)
 
@@ -99,7 +100,7 @@ func (vw *VolumeWatcher) run() {
 			}
 		} else {
 			glog.V(4).Infof("Enumerating volumes at %s", watchDir)
-			glog.V(4).Infoln("Notifying volume lister")
+			glog.V(4).Infoln("Adding event to lister queue")
 			vw.events <- enumerateVolumes(files)
 			if err := waitForChanges(vw.ctx, watcher, watchDir, isVolume); err != nil {
 				glog.Warningf("Volume watch failure %+v\n", err)
