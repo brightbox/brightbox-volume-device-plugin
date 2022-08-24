@@ -35,6 +35,7 @@ type VolumeWatcher struct {
 	events chan Event
 	ctx    context.Context
 	cancel context.CancelFunc
+	watch  *fsnotify.Watcher
 }
 
 // NewWatcher creates a new volume watcher.
@@ -43,15 +44,25 @@ type VolumeWatcher struct {
 // The watcher can be cancelled by calling the returned context cancellation
 // function
 func NewWatcher() *VolumeWatcher {
+	return NewWatchDir(deviceDir)
+}
+
+func NewWatchDir(dir string) *VolumeWatcher {
 	glog.V(4).Infof("Creating new watcher")
 
+	watch, err := fsnotify.NewWatcher()
+	if err != nil {
+		glog.Warningf("Unable to create file Watcher")
+		return nil
+	}
 	watchCtx, watchCancel := context.WithCancel(context.Background())
 	watcher := &VolumeWatcher{
-		events: make(chan Event, bufferSize),
+		events: make(chan Event),
 		ctx:    watchCtx,
 		cancel: watchCancel,
+		watch:  watch,
 	}
-	go watcher.run()
+	go watcher.run(dir)
 	return watcher
 }
 
@@ -77,80 +88,103 @@ func (vw *VolumeWatcher) Err() error {
 
 // Implementation
 
-const watchDir = "/dev/disk/by-id"
+const deviceDir = "/dev/disk/by-id"
 const bufferSize = 3
 
 var volRe = regexp.MustCompile(`vol-.....$`)
 
 // run sets up the watcher and reports events
 // Runs until cancelled via the supplied context
-func (vw *VolumeWatcher) run() {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		glog.Warningf("Unable to create Watcher")
+func (vw *VolumeWatcher) run(watchDir string) {
+	baseDir := path.Dir(watchDir)
+	defer vw.watch.Close()
+	if err := vw.watch.Add(baseDir); err != nil {
+		vw.warnAndCancel(
+			fmt.Sprintf("Failed to add %s to watcher", baseDir),
+			err,
+		)
 		return
 	}
-	defer watcher.Close()
+	if err := vw.watch.Add(watchDir); err == nil {
+		vw.readAndNotify(watchDir)
+	} else {
+		glog.Infoln("Watch Directory is missing - awaiting create")
+	}
 	for {
-		files, err := os.ReadDir(watchDir)
-		if errors.Is(err, os.ErrNotExist) {
-			glog.Warningf("Watch directory %s is missing", watchDir)
-			if err := waitForChanges(vw.ctx, watcher, path.Dir(watchDir), isWatchDir); err != nil {
-				glog.Warningf("Directory watch failure: %+v\n", err)
-			}
-		} else {
-			glog.V(4).Infof("Enumerating volumes at %s", watchDir)
-			glog.V(4).Infoln("Adding event to lister queue")
-			vw.events <- enumerateVolumes(files)
-			if err := waitForChanges(vw.ctx, watcher, watchDir, isVolume); err != nil {
-				glog.Warningf("Volume watch failure %+v\n", err)
-			}
-		}
 		select {
+		case err := <-vw.watch.Errors:
+			vw.warnAndCancel("Unexpected volume watch errors", err)
 		case <-vw.ctx.Done():
 			glog.V(4).Infoln("Directory scanner cancelled")
 			return
-		default:
-			glog.V(4).Infoln("Directory watch complete - rediscovering")
+		case event, ok := <-vw.watch.Events:
+			switch {
+			case !ok:
+				vw.warnAndCancel(
+					"Unexpected volume watch event error",
+					fmt.Errorf("watch event error"),
+				)
+			case isDirRemove(event, watchDir):
+				glog.V(4).Infoln("Watch Directory removed", event)
+			case isDirRemove(event, baseDir):
+				glog.V(4).Infoln("Base Directory removed", event)
+				glog.Warning("Cancelling watch")
+				vw.cancel()
+			case isDirCreate(event, watchDir):
+				glog.V(4).Infoln("Watch Directory added")
+				if err := vw.watch.Add(watchDir); err == nil {
+					vw.readAndNotify(watchDir)
+				} else {
+					vw.warnAndCancel(
+						fmt.Sprintf("Failed to add %s to watcher", watchDir),
+						err,
+					)
+				}
+			case isVolChange(event, watchDir):
+				glog.V(4).Infoln("Watch Directory changed", event)
+				vw.readAndNotify(watchDir)
+			default:
+				glog.V(4).Infoln("Ignored watch event: ", event)
+			}
 		}
 	}
 }
 
-func isWatchDir(event fsnotify.Event) bool {
+func (vw *VolumeWatcher) warnAndCancel(message string, err error) {
+	glog.Warningf("%s: %s", message, err)
+	glog.Warning("Cancelling watch")
+	vw.cancel()
+}
+
+func (vw *VolumeWatcher) readAndNotify(watchDir string) {
+	files, err := os.ReadDir(watchDir)
+	if err == nil {
+		glog.V(4).Infof("Enumerating volumes at %s\n", watchDir)
+		glog.V(4).Infoln("Adding event to lister queue")
+		vw.events <- enumerateVolumes(files)
+	} else if errors.Is(err, os.ErrNotExist) {
+		glog.V(4).Infoln("Watch Directory removed during event")
+	} else {
+		vw.warnAndCancel(
+			fmt.Sprintf("Failed to read %s", watchDir),
+			err,
+		)
+	}
+}
+
+func isDirRemove(event fsnotify.Event, targetDir string) bool {
+	return event.Has(fsnotify.Remove) &&
+		event.Name == targetDir
+}
+
+func isDirCreate(event fsnotify.Event, targetDir string) bool {
 	return event.Has(fsnotify.Create) &&
-		event.Name == watchDir
+		event.Name == targetDir
 }
 
-func isVolume(event fsnotify.Event) bool {
+func isVolChange(event fsnotify.Event, targetDir string) bool {
 	return (event.Has(fsnotify.Create) ||
-		event.Has(fsnotify.Remove)) && path.Dir(event.Name) == watchDir
-}
-
-func waitForChanges(ctx context.Context, watcher *fsnotify.Watcher, dirName string, matchEvent func(fsnotify.Event) bool) error {
-	err := watcher.Add(dirName)
-	if err != nil {
-		return fmt.Errorf("Failed to add %s to watcher: %w", dirName, err)
-	}
-	defer watcher.Remove(dirName)
-	glog.V(4).Infoln("Waiting for device changes")
-	for {
-		select {
-		case <-ctx.Done():
-			glog.V(4).Infoln("Watch cancelled")
-			return ctx.Err()
-		case event, ok := <-watcher.Events:
-			if !ok {
-				return fmt.Errorf("Watch event issue")
-			}
-			if matchEvent(event) {
-				glog.V(4).Infof("Watch event: %q %s\n", event.Name, event.Op)
-				return nil
-			}
-			glog.V(4).Infoln("Ignored watch event:", event)
-		case err := <-watcher.Errors:
-			return err
-		}
-	}
+		event.Has(fsnotify.Remove)) && path.Dir(event.Name) == targetDir
 }
 
 func enumerateVolumes(dirents []os.DirEntry) Event {
