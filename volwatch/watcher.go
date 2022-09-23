@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 
 	"github.com/fsnotify/fsnotify"
@@ -38,6 +39,11 @@ type VolumeWatcher struct {
 	watch  *fsnotify.Watcher
 }
 
+// IDDevicePath gives the full path to the target in the deviceDir
+func IDDevicePath(target string) string {
+	return filepath.Join(deviceDir, target)
+}
+
 // NewWatcher creates a new volume watcher.
 // It launches a separate Go routine in a separate context which
 // watches for volumes being created and removed.
@@ -47,6 +53,7 @@ func NewWatcher() *VolumeWatcher {
 	return NewWatchDir(deviceDir)
 }
 
+// NewWatchDir creates a new volume watcher on an arbitrary directory
 func NewWatchDir(dir string) *VolumeWatcher {
 	glog.V(4).Infof("Creating new watcher")
 
