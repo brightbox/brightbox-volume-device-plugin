@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 
 	"golang.org/x/exp/slices"
 
@@ -114,22 +113,10 @@ func (vdp *volumeDevicePlugin) Allocate(ctx context.Context, request *pluginapi.
 		containerResponse := new(pluginapi.ContainerAllocateResponse)
 		for _, id := range container.DevicesIDs {
 			idDevicePath := volwatch.IDDevicePath(id)
-			glog.V(4).Infof("idDevicePath is %#v", idDevicePath)
-			diskDevicePath, err := os.Readlink(idDevicePath)
-			if err != nil {
-				glog.Errorf("diskDevice Path error: %q", err)
-				return nil, err
-			}
-			glog.V(4).Infof("DiskDevicePath is %#v", diskDevicePath)
 			containerResponse.Devices = append(containerResponse.Devices,
 				&pluginapi.DeviceSpec{
 					ContainerPath: idDevicePath,
 					HostPath:      idDevicePath,
-					Permissions:   "rw",
-				},
-				&pluginapi.DeviceSpec{
-					ContainerPath: diskDevicePath,
-					HostPath:      diskDevicePath,
 					Permissions:   "rw",
 				},
 			)
