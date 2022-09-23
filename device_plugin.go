@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 
 	"golang.org/x/exp/slices"
 
+	"github.com/brightbox/brightbox-volume-device-plugin/volwatch"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
@@ -105,11 +107,35 @@ func (vdp *volumeDevicePlugin) GetPreferredAllocation(context.Context, *pluginap
 func (vdp *volumeDevicePlugin) Allocate(ctx context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	glog.V(3).Info("Volume Allocate Called")
 	glog.V(4).Infof("Request is %#v", request)
-	return &pluginapi.AllocateResponse{
-		ContainerResponses: []*pluginapi.ContainerAllocateResponse{
-			&pluginapi.ContainerAllocateResponse{},
-		},
-	}, nil
+
+	resp := new(pluginapi.AllocateResponse)
+
+	for _, container := range request.ContainerRequests {
+		containerResponse := new(pluginapi.ContainerAllocateResponse)
+		for _, id := range container.DevicesIDs {
+			idDevicePath := volwatch.IDDevicePath(id)
+			diskDevicePath, err := filepath.EvalSymlinks(idDevicePath)
+			if err != nil {
+				return nil, err
+			}
+			containerResponse.Devices = append(containerResponse.Devices,
+				&pluginapi.DeviceSpec{
+					ContainerPath: idDevicePath,
+					HostPath:      idDevicePath,
+					Permissions:   "rw",
+				},
+				&pluginapi.DeviceSpec{
+					ContainerPath: diskDevicePath,
+					HostPath:      diskDevicePath,
+					Permissions:   "rw",
+				},
+			)
+		}
+		resp.ContainerResponses = append(resp.ContainerResponses, containerResponse)
+	}
+
+	glog.V(4).Infof("Response is %#v", resp)
+	return resp, nil
 }
 
 // PreStartContainer is called, if indicated by Device Plugin during registeration phase,
