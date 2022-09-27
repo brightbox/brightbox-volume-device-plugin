@@ -41,7 +41,7 @@ type VolumeWatcher struct {
 
 // IDDevicePath gives the full path to the target in the deviceDir
 func IDDevicePath(target string) string {
-	return filepath.Join(deviceDir, target)
+	return filepath.Join(deviceDir, "virtio-"+target)
 }
 
 // NewWatcher creates a new volume watcher.

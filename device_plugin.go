@@ -105,18 +105,19 @@ func (vdp *volumeDevicePlugin) GetPreferredAllocation(context.Context, *pluginap
 // of the steps to make the Device available in the container
 func (vdp *volumeDevicePlugin) Allocate(ctx context.Context, request *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	glog.V(3).Info("Volume Allocate Called")
-	glog.V(4).Infof("Request is %#v", request)
+	glog.V(4).Infof("Request is %#v", request.ContainerRequests)
 
 	resp := new(pluginapi.AllocateResponse)
 
 	for _, container := range request.ContainerRequests {
 		containerResponse := new(pluginapi.ContainerAllocateResponse)
 		for _, id := range container.DevicesIDs {
-			idDevicePath := volwatch.IDDevicePath(id)
+			idMountPath := volwatch.IDDevicePath(id)
+			glog.V(4).Infof("supplying mount at %q", idMountPath)
 			containerResponse.Devices = append(containerResponse.Devices,
 				&pluginapi.DeviceSpec{
-					ContainerPath: idDevicePath,
-					HostPath:      idDevicePath,
+					ContainerPath: idMountPath,
+					HostPath:      idMountPath,
 					Permissions:   "rw",
 				},
 			)
@@ -124,7 +125,6 @@ func (vdp *volumeDevicePlugin) Allocate(ctx context.Context, request *pluginapi.
 		resp.ContainerResponses = append(resp.ContainerResponses, containerResponse)
 	}
 
-	glog.V(4).Infof("Response is %#v", resp)
 	return resp, nil
 }
 
