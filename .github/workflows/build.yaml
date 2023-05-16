@@ -1,29 +1,39 @@
-name: ci
+name: 'Build and Push Device Volume Plugin'
 
 on:
   push:
-    branches:
-      - 'main'
+    tags:
+      - '*'
 
 jobs:
-  docker:
+  build:
     runs-on: ubuntu-latest
     steps:
-      -
-        name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
       -
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       -
-        name: Login to DockerHub
+        name: Set up Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            cr.brightbox.com/${{ vars.CR_ACCOUNT }}/${{ vars.CR_REPO }}/brightbox-volume-device-plugin
+          tags: |
+            type=semver,pattern={{version}}
+      -
+        name: Login to Brightbox Container Registry
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          registry: cr.brightbox.com
+          username: ${{ vars.CR_USERNAME }}
+          password: ${{ secrets.CR_SECRET }}
       -
         name: Build and push
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         with:
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           push: true
-          tags: brightbox/brightbox-volume-device-plugin:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
