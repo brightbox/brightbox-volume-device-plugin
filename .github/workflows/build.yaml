@@ -15,7 +15,7 @@ jobs:
       -
         name: Set up Docker Metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: |
             cr.brightbox.com/${{ vars.CR_ACCOUNT }}/${{ vars.CR_REPO }}/brightbox-volume-device-plugin
